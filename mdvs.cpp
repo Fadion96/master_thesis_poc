@@ -111,6 +111,62 @@ void verify (G1 g, string msg, vector<G1> public_keys,
     assert (e1 == e2);
 }
 
+tuple<vector<G1>, G2> sim(G1 g, string msg, vector<G1> public_keys, 
+                            Fr sk, int p_id, int v_id){                                
+    vector<Fr> a_list;
+    vector<G1> r_list;
+    vector<Fr> h_list;
+    int counter = 0;
+    for (auto pk: public_keys){
+        if (counter == v_id){
+            a_list.push_back(Fr(0));
+            r_list.push_back(g);
+            h_list.push_back(Fr(0));
+            counter++;
+        }
+        else{
+            Fr a_i;
+            a_i.setByCSPRNG();
+            a_list.push_back(a_i);
+            G1 r_i = g * a_i;
+            r_list.push_back(r_i);
+            Fr h_i;
+            h_i.setHashOf(msg + r_i.getStr());
+            h_list.push_back(h_i);
+        }
+    }
+    Fr a;
+    a.setByCSPRNG();
+    G1 r = g * a;
+    for (int i=0; i < public_keys.size(); i++){
+        if (i == v_id){
+            continue;
+        }
+        else {
+            Fr neg_h;
+            Fr::neg(neg_h, h_list[i]);
+            r += public_keys[i] *  neg_h;
+        }
+    }
+    Fr h;
+    h.setHashOf(msg + r.getStr());
+    Fr s = 0;
+     for (int i=0; i < public_keys.size(); i++){
+        if (i == v_id){
+            continue;
+        }
+        else {
+            s += a_list[i] + a + ( sk * h);
+        }
+    }
+    G1 r_v = r * sk;
+    r_list[v_id] = r_v;
+    G2 g_hat;
+    hashAndMapToG2(g_hat, msg + getStrFromG1Vec(r_list) + getStrFromG1Vec(public_keys));
+    G2 S = g_hat * s;
+    return {r_list, S};
+}
+
 int main(){
 	initPairing(mcl::BLS12_381);
     G1 g;
@@ -118,10 +174,7 @@ int main(){
     hashAndMapToG1(g, "DVS");
     auto [sk_p, sk_v, pk_p, pk_v] = keyGen(g);
     vector<G1> public_keys = {pk_p, pk_v};
-    auto [R, s] = sign(g, msg, public_keys, sk_p, 0, 1);
-    // for (auto r : R){
-    //     cout << *r << endl;
-    // }
+    // auto [R, s] = sign(g, msg, public_keys, sk_p, 0, 1);
+    auto [R, s] = sim(g, msg, public_keys, sk_v, 0, 1);
     verify(g, msg, public_keys, sk_v, 0, 1, R, s);
-    // cout<< s<< endl;
 }
